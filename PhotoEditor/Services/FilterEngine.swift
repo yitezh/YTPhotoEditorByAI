@@ -20,7 +20,7 @@ class FilterEngine {
 
     /// Apply all edit parameters to the source image and return the processed CIImage.
     /// The filter chain order: exposure → color controls → highlight/shadow →
-    /// temperature/tint → vibrance → sharpen → crop → rotate.
+    /// temperature/tint → vibrance → sharpen → rotate → crop.
     func apply(parameters: EditParameters, to image: CIImage) -> CIImage {
         var output = image
 
@@ -42,14 +42,14 @@ class FilterEngine {
         // 6. Sharpness: CISharpenLuminance
         output = applySharpness(output, value: parameters.sharpness)
 
-        // 7. Crop
-        if let codableCrop = parameters.cropRect {
-            output = applyCrop(output, rect: codableCrop.cgRect)
-        }
-
-        // 8. Rotation
+        // 7. Rotation (apply before crop)
         if parameters.rotationCount > 0 {
             output = applyRotation(output, count: parameters.rotationCount)
+        }
+
+        // 8. Crop (apply after rotation)
+        if let codableCrop = parameters.cropRect {
+            output = applyCrop(output, rect: codableCrop.cgRect)
         }
 
         return output
@@ -57,35 +57,26 @@ class FilterEngine {
 
     /// Generate a downsampled preview image for real-time display.
     func generatePreview(parameters: EditParameters, source: CIImage, targetSize: CGSize) -> UIImage? {
-        // Downsample source first for performance
-        let scale = min(targetSize.width / source.extent.width,
-                        targetSize.height / source.extent.height,
+        // Apply all transformations at full resolution first
+        let processed = apply(parameters: parameters, to: source)
+
+        let extent = processed.extent
+        guard extent.width > 0, extent.height > 0 else { return nil }
+
+        // Then downsample the result to fit targetSize
+        let scale = min(targetSize.width / extent.width,
+                        targetSize.height / extent.height,
                         1.0) // never upscale
 
-        var previewParams = parameters
-
-        let downsampled: CIImage
+        let final: CIImage
         if scale < 1.0 {
             let transform = CGAffineTransform(scaleX: scale, y: scale)
-            downsampled = source.transformed(by: transform)
-
-            // Scale the crop rect to match the downsampled image coordinates
-            if let crop = parameters.cropRect {
-                let scaledRect = CGRect(
-                    x: crop.x * CGFloat(scale),
-                    y: crop.y * CGFloat(scale),
-                    width: crop.width * CGFloat(scale),
-                    height: crop.height * CGFloat(scale)
-                )
-                previewParams.cropRect = CodableCGRect(scaledRect)
-            }
+            final = processed.transformed(by: transform)
         } else {
-            downsampled = source
+            final = processed
         }
 
-        let processed = apply(parameters: previewParams, to: downsampled)
-
-        guard let cgImage = context.createCGImage(processed, from: processed.extent) else {
+        guard let cgImage = context.createCGImage(final, from: final.extent) else {
             return nil
         }
         return UIImage(cgImage: cgImage)

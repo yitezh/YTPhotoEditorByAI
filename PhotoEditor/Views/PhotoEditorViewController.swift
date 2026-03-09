@@ -415,14 +415,28 @@ class PhotoEditorViewController: UIViewController {
     }
 
     /// Convert a rect from CIImage pixel coordinates back to the preview view's coordinate space.
+    /// Takes rotation into account - the imageRect should be in the rotated image's coordinate space.
     private func convertImageRectToViewRect(_ imageRect: CGRect) -> CGRect {
         guard let sourceImage = viewModel.sourceImage else { return imageRect }
 
-        let imageExtent = sourceImage.extent
         let viewSize = previewView.bounds.size
         guard viewSize.width > 0, viewSize.height > 0 else { return imageRect }
 
-        let imageAspect = imageExtent.width / imageExtent.height
+        // Get the rotated image extent (swap width/height for odd rotation counts)
+        let originalExtent = sourceImage.extent
+        let rotationCount = viewModel.currentParameters.rotationCount
+        
+        let rotatedWidth: CGFloat
+        let rotatedHeight: CGFloat
+        if rotationCount % 2 == 0 {
+            rotatedWidth = originalExtent.width
+            rotatedHeight = originalExtent.height
+        } else {
+            rotatedWidth = originalExtent.height
+            rotatedHeight = originalExtent.width
+        }
+
+        let imageAspect = rotatedWidth / rotatedHeight
         let viewAspect = viewSize.width / viewSize.height
 
         var displayRect: CGRect
@@ -438,14 +452,14 @@ class PhotoEditorViewController: UIViewController {
             displayRect = CGRect(x: offsetX, y: 0, width: displayWidth, height: displayHeight)
         }
 
-        let scaleX = displayRect.width / imageExtent.width
-        let scaleY = displayRect.height / imageExtent.height
+        let scaleX = displayRect.width / rotatedWidth
+        let scaleY = displayRect.height / rotatedHeight
 
-        let viewX = (imageRect.origin.x - imageExtent.origin.x) * scaleX + displayRect.origin.x
+        let viewX = imageRect.origin.x * scaleX + displayRect.origin.x
         let viewW = imageRect.width * scaleX
         let viewH = imageRect.height * scaleY
-        // Flip Y axis back: CIImage bottom-left → UIKit top-left
-        let viewY = displayRect.maxY - (imageRect.origin.y - imageExtent.origin.y + imageRect.height) * scaleY
+        // Flip Y axis: CIImage bottom-left → UIKit top-left
+        let viewY = displayRect.maxY - (imageRect.origin.y + imageRect.height) * scaleY
 
         return CGRect(x: viewX, y: viewY, width: viewW, height: viewH)
     }
@@ -526,50 +540,59 @@ extension PhotoEditorViewController: FilterPresetViewDelegate {
 
 extension PhotoEditorViewController: CropOverlayViewDelegate {
     func cropOverlayViewDidConfirm(_ view: CropOverlayView, cropRect: CGRect, rotationCount: Int) {
-        // Convert crop rect from view coordinates to CIImage pixel coordinates
-        let imageCropRect = convertViewRectToImageRect(cropRect)
+        // Convert crop rect from view coordinates to CIImage pixel coordinates (in rotated space)
+        let imageCropRect = convertViewRectToImageRect(cropRect, rotationCount: rotationCount)
         viewModel.applyCrop(imageCropRect, rotation: rotationCount)
         adjustmentPanel.updateValues(from: viewModel.currentParameters)
         exitCropMode()
     }
 
-    /// Convert a rect from the preview view's coordinate space to the source CIImage's pixel coordinate space.
-    /// Accounts for aspect-fit scaling and CIImage's bottom-left origin (Y-axis flipped vs UIKit).
-    private func convertViewRectToImageRect(_ viewRect: CGRect) -> CGRect {
+    /// Convert a rect from the preview view's coordinate space to the rotated CIImage's pixel coordinate space.
+    /// The output rect is in the rotated image's coordinate system (after rotation has been applied).
+    private func convertViewRectToImageRect(_ viewRect: CGRect, rotationCount: Int) -> CGRect {
         guard let sourceImage = viewModel.sourceImage else { return viewRect }
 
-        let imageExtent = sourceImage.extent
         let viewSize = previewView.bounds.size
         guard viewSize.width > 0, viewSize.height > 0 else { return viewRect }
 
-        // Calculate the aspect-fit display rect of the image within the preview view
-        let imageAspect = imageExtent.width / imageExtent.height
+        // Get the rotated image dimensions (swap width/height for odd rotation counts)
+        let originalExtent = sourceImage.extent
+        let rotatedWidth: CGFloat
+        let rotatedHeight: CGFloat
+        if rotationCount % 2 == 0 {
+            rotatedWidth = originalExtent.width
+            rotatedHeight = originalExtent.height
+        } else {
+            rotatedWidth = originalExtent.height
+            rotatedHeight = originalExtent.width
+        }
+
+        // Calculate the aspect-fit display rect based on rotated dimensions
+        let imageAspect = rotatedWidth / rotatedHeight
         let viewAspect = viewSize.width / viewSize.height
 
         var displayRect: CGRect
         if imageAspect > viewAspect {
-            // Image is wider — letterboxed top/bottom
             let displayWidth = viewSize.width
             let displayHeight = viewSize.width / imageAspect
             let offsetY = (viewSize.height - displayHeight) / 2
             displayRect = CGRect(x: 0, y: offsetY, width: displayWidth, height: displayHeight)
         } else {
-            // Image is taller — pillarboxed left/right
             let displayHeight = viewSize.height
             let displayWidth = viewSize.height * imageAspect
             let offsetX = (viewSize.width - displayWidth) / 2
             displayRect = CGRect(x: offsetX, y: 0, width: displayWidth, height: displayHeight)
         }
 
-        // Scale factor from display to image pixels
-        let scaleX = imageExtent.width / displayRect.width
-        let scaleY = imageExtent.height / displayRect.height
+        // Scale factor from display to rotated image pixels
+        let scaleX = rotatedWidth / displayRect.width
+        let scaleY = rotatedHeight / displayRect.height
 
-        // Convert view rect to image pixel coordinates
-        let imageX = (viewRect.origin.x - displayRect.origin.x) * scaleX + imageExtent.origin.x
+        // Convert view rect to rotated image pixel coordinates
+        let imageX = (viewRect.origin.x - displayRect.origin.x) * scaleX
         // Flip Y axis: UIKit origin is top-left, CIImage origin is bottom-left
         let viewBottomY = viewRect.origin.y + viewRect.height
-        let imageY = (displayRect.maxY - viewBottomY) * scaleY + imageExtent.origin.y
+        let imageY = (displayRect.maxY - viewBottomY) * scaleY
         let imageW = viewRect.width * scaleX
         let imageH = viewRect.height * scaleY
 
