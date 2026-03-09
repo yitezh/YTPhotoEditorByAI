@@ -329,11 +329,11 @@ class PhotoEditorViewController: UIViewController {
 
     /// Enter crop mode: show the crop overlay on top of the preview.
     func enterCropMode() {
-        // Show the original (uncropped) image as background for the crop overlay
+        // Show the original (uncropped but rotated) image as background for the crop overlay
         if let source = viewModel.sourceImage {
             var noCropParams = viewModel.currentParameters
             noCropParams.cropRect = nil
-            noCropParams.rotationCount = 0
+            // Keep the current rotation
             let uncropped = viewModel.filterEngine.generatePreview(
                 parameters: noCropParams,
                 source: source,
