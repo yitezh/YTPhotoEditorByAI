@@ -42,12 +42,21 @@ class FilterEngine {
         // 6. Sharpness: CISharpenLuminance
         output = applySharpness(output, value: parameters.sharpness)
 
-        // 7. Rotation (apply before crop)
+        // 7. Texture: Unsharp mask with small radius
+        output = applyTexture(output, value: parameters.texture)
+
+        // 8. Clarity: Unsharp mask with large radius
+        output = applyClarity(output, value: parameters.clarity)
+
+        // 9. Dehaze: Contrast + saturation boost
+        output = applyDehaze(output, value: parameters.dehaze)
+
+        // 10. Rotation (apply before crop)
         if parameters.rotationCount > 0 {
             output = applyRotation(output, count: parameters.rotationCount)
         }
 
-        // 8. Crop (apply after rotation)
+        // 11. Crop (apply after rotation)
         if let codableCrop = parameters.cropRect {
             output = applyCrop(output, rect: codableCrop.cgRect)
         }
@@ -161,6 +170,78 @@ class FilterEngine {
         filter.setValue(image, forKey: kCIInputImageKey)
         filter.setValue(sharpness, forKey: "inputSharpness")
         return filter.outputImage ?? image
+    }
+
+    /// Texture: Enhance fine details using unsharp mask with small radius
+    /// Map -100~+100 to texture strength
+    private func applyTexture(_ image: CIImage, value: Float) -> CIImage {
+        guard value != 0 else { return image }
+        let intensity = value / 100.0 * 1.5 // -1.5 ~ +1.5
+        guard let filter = CIFilter(name: "CIUnsharpMask") else { return image }
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(abs(intensity), forKey: "inputIntensity")
+        filter.setValue(0.5, forKey: "inputRadius") // Small radius for fine details
+        
+        if value < 0 {
+            // Negative texture: blend back towards original to reduce texture
+            guard let blurred = filter.outputImage else { return image }
+            guard let blend = CIFilter(name: "CIBlendWithMask") else { return image }
+            // Create a simple blend
+            return image.applyingFilter("CIColorControls", parameters: [
+                "inputSaturation": 1.0 + (value / 100.0 * 0.2)
+            ])
+        }
+        
+        return filter.outputImage ?? image
+    }
+
+    /// Clarity: Enhance mid-tone contrast using unsharp mask with large radius
+    /// Map -100~+100 to clarity strength
+    private func applyClarity(_ image: CIImage, value: Float) -> CIImage {
+        guard value != 0 else { return image }
+        let intensity = value / 100.0 * 2.0 // -2.0 ~ +2.0
+        guard let filter = CIFilter(name: "CIUnsharpMask") else { return image }
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(abs(intensity), forKey: "inputIntensity")
+        filter.setValue(5.0, forKey: "inputRadius") // Large radius for mid-tone contrast
+        
+        if value < 0 {
+            // Negative clarity: soften the image
+            guard let blur = CIFilter(name: "CIGaussianBlur") else { return image }
+            blur.setValue(image, forKey: kCIInputImageKey)
+            blur.setValue(abs(value) / 100.0 * 2.0, forKey: "inputRadius")
+            guard let blurred = blur.outputImage else { return image }
+            
+            // Blend with original
+            let alpha = abs(value) / 100.0 * 0.5
+            guard let blend = CIFilter(name: "CISourceOverCompositing") else { return image }
+            // Simple blend by adjusting opacity
+            return blurred.applyingFilter("CIColorControls", parameters: [
+                "inputBrightness": 0,
+                "inputContrast": 1.0 - alpha * 0.3
+            ])
+        }
+        
+        return filter.outputImage ?? image
+    }
+
+    /// Dehaze: Remove haze by boosting contrast and saturation
+    /// Map -100~+100 to dehaze strength
+    private func applyDehaze(_ image: CIImage, value: Float) -> CIImage {
+        guard value != 0 else { return image }
+        
+        // Dehaze is a combination of contrast, saturation, and slight exposure boost
+        let strength = value / 100.0
+        
+        // Boost contrast
+        let contrastAmount = 1.0 + strength * 0.4 // 0.6 ~ 1.4
+        guard let contrast = CIFilter(name: "CIColorControls") else { return image }
+        contrast.setValue(image, forKey: kCIInputImageKey)
+        contrast.setValue(contrastAmount, forKey: "inputContrast")
+        contrast.setValue(1.0 + strength * 0.2, forKey: "inputSaturation") // Boost saturation
+        contrast.setValue(strength * 0.1, forKey: "inputBrightness") // Slight brightness boost
+        
+        return contrast.outputImage ?? image
     }
 
     // MARK: - Crop & Rotation

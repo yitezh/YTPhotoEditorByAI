@@ -125,6 +125,9 @@ class AdjustmentPanelView: UIView {
         case .vibrance:   return params.vibrance
         case .warmth:     return params.warmth
         case .sharpness:  return params.sharpness
+        case .texture:    return params.texture
+        case .clarity:    return params.clarity
+        case .dehaze:     return params.dehaze
         }
     }
 }

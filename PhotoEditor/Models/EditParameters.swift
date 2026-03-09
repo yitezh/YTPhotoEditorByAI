@@ -12,6 +12,9 @@ struct EditParameters: Codable, Equatable {
     var vibrance: Float = 0       // -100 ~ +100
     var warmth: Float = 0         // -100 ~ +100
     var sharpness: Float = 0      // -100 ~ +100
+    var texture: Float = 0        // -100 ~ +100
+    var clarity: Float = 0        // -100 ~ +100
+    var dehaze: Float = 0         // -100 ~ +100
 
     var cropRect: CodableCGRect?  // nil means no crop applied
     var rotationCount: Int = 0    // 0-3, number of 90° clockwise rotations

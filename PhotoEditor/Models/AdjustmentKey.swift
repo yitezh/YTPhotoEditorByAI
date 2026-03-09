@@ -10,6 +10,9 @@ enum AdjustmentKey: String, CaseIterable, Codable {
     case vibrance
     case warmth
     case sharpness
+    case texture
+    case clarity
+    case dehaze
 
     /// Localized display name for UI
     var displayName: String {
@@ -22,6 +25,9 @@ enum AdjustmentKey: String, CaseIterable, Codable {
         case .vibrance:   return "自然饱和度"
         case .warmth:     return "色温"
         case .sharpness:  return "锐度"
+        case .texture:    return "纹理"
+        case .clarity:    return "清晰度"
+        case .dehaze:     return "去朦胧"
         }
     }
 
@@ -36,6 +42,9 @@ enum AdjustmentKey: String, CaseIterable, Codable {
         case .vibrance:   return "paintpalette"
         case .warmth:     return "thermometer.medium"
         case .sharpness:  return "triangle"
+        case .texture:    return "square.grid.3x3"
+        case .clarity:    return "sparkles"
+        case .dehaze:     return "cloud.fill"
         }
     }
 
@@ -46,7 +55,7 @@ enum AdjustmentKey: String, CaseIterable, Codable {
             return .light
         case .saturation, .vibrance, .warmth:
             return .color
-        case .sharpness:
+        case .sharpness, .texture, .clarity, .dehaze:
             return .detail
         }
     }

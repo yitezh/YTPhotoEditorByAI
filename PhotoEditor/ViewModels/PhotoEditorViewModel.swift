@@ -66,6 +66,9 @@ class PhotoEditorViewModel {
         case .vibrance:   currentParameters.vibrance = clamped
         case .warmth:     currentParameters.warmth = clamped
         case .sharpness:  currentParameters.sharpness = clamped
+        case .texture:    currentParameters.texture = clamped
+        case .clarity:    currentParameters.clarity = clamped
+        case .dehaze:     currentParameters.dehaze = clamped
         }
         pushAndRefresh()
     }
@@ -83,6 +86,9 @@ class PhotoEditorViewModel {
         case .vibrance:   currentParameters.vibrance = clamped
         case .warmth:     currentParameters.warmth = clamped
         case .sharpness:  currentParameters.sharpness = clamped
+        case .texture:    currentParameters.texture = clamped
+        case .clarity:    currentParameters.clarity = clamped
+        case .dehaze:     currentParameters.dehaze = clamped
         }
         refreshPreview()
     }
