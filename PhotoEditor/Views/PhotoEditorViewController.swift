@@ -476,6 +476,8 @@ class PhotoEditorViewController: UIViewController {
             filterPresetView.isHidden = false
         } else {
             adjustmentPanel.isHidden = false
+            // Update the adjustment panel to match the current tab
+            adjustmentPanel.switchToTab(currentTab, parameters: viewModel.currentParameters, animated: false)
         }
     }
 }
