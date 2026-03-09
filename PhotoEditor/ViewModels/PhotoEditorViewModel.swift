@@ -54,6 +54,7 @@ class PhotoEditorViewModel {
     // MARK: - Parameter Updates
 
     /// Update a single adjustment parameter by key and refresh the preview.
+    /// This version pushes to history immediately (used for non-interactive changes).
     func updateParameter(_ key: AdjustmentKey, value: Float) {
         let clamped = min(100, max(-100, value))
         switch key {
@@ -67,6 +68,30 @@ class PhotoEditorViewModel {
         case .sharpness:  currentParameters.sharpness = clamped
         }
         pushAndRefresh()
+    }
+
+    /// Update a single adjustment parameter without pushing to history.
+    /// Used during interactive slider dragging for real-time preview.
+    func updateParameterPreview(_ key: AdjustmentKey, value: Float) {
+        let clamped = min(100, max(-100, value))
+        switch key {
+        case .exposure:   currentParameters.exposure = clamped
+        case .contrast:   currentParameters.contrast = clamped
+        case .highlights: currentParameters.highlights = clamped
+        case .shadows:    currentParameters.shadows = clamped
+        case .saturation: currentParameters.saturation = clamped
+        case .vibrance:   currentParameters.vibrance = clamped
+        case .warmth:     currentParameters.warmth = clamped
+        case .sharpness:  currentParameters.sharpness = clamped
+        }
+        refreshPreview()
+    }
+
+    /// Commit the current parameter state to history.
+    /// Called when user finishes interactive adjustment (e.g., slider touch up).
+    func commitParameterChange() {
+        editHistory.push(currentParameters)
+        onHistoryChanged?()
     }
 
     /// Reset a single parameter to its default value (0).

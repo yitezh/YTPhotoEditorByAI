@@ -3,6 +3,7 @@ import UIKit
 /// Delegate for parameter changes from the adjustment panel.
 protocol AdjustmentPanelViewDelegate: AnyObject {
     func adjustmentPanelView(_ panel: AdjustmentPanelView, didChangeValue value: Float, forKey key: AdjustmentKey)
+    func adjustmentPanelView(_ panel: AdjustmentPanelView, didEndChangingValue value: Float, forKey key: AdjustmentKey)
     func adjustmentPanelView(_ panel: AdjustmentPanelView, didResetKey key: AdjustmentKey)
 }
 
@@ -133,6 +134,10 @@ class AdjustmentPanelView: UIView {
 extension AdjustmentPanelView: AdjustmentSliderCellDelegate {
     func adjustmentSliderCell(_ cell: AdjustmentSliderCell, didChangeValue value: Float, forKey key: AdjustmentKey) {
         delegate?.adjustmentPanelView(self, didChangeValue: value, forKey: key)
+    }
+
+    func adjustmentSliderCell(_ cell: AdjustmentSliderCell, didEndChangingValue value: Float, forKey key: AdjustmentKey) {
+        delegate?.adjustmentPanelView(self, didEndChangingValue: value, forKey: key)
     }
 
     func adjustmentSliderCell(_ cell: AdjustmentSliderCell, didResetKey key: AdjustmentKey) {

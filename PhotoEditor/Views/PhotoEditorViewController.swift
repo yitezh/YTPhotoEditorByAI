@@ -491,7 +491,13 @@ extension PhotoEditorViewController: ToolTabBarViewDelegate {
 
 extension PhotoEditorViewController: AdjustmentPanelViewDelegate {
     func adjustmentPanelView(_ panel: AdjustmentPanelView, didChangeValue value: Float, forKey key: AdjustmentKey) {
-        viewModel.updateParameter(key, value: value)
+        // During slider dragging: update preview only, don't push to history
+        viewModel.updateParameterPreview(key, value: value)
+    }
+
+    func adjustmentPanelView(_ panel: AdjustmentPanelView, didEndChangingValue value: Float, forKey key: AdjustmentKey) {
+        // When slider touch ends: commit to history
+        viewModel.commitParameterChange()
     }
 
     func adjustmentPanelView(_ panel: AdjustmentPanelView, didResetKey key: AdjustmentKey) {

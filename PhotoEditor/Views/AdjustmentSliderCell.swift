@@ -3,6 +3,7 @@ import UIKit
 /// Delegate for slider value changes and reset gestures.
 protocol AdjustmentSliderCellDelegate: AnyObject {
     func adjustmentSliderCell(_ cell: AdjustmentSliderCell, didChangeValue value: Float, forKey key: AdjustmentKey)
+    func adjustmentSliderCell(_ cell: AdjustmentSliderCell, didEndChangingValue value: Float, forKey key: AdjustmentKey)
     func adjustmentSliderCell(_ cell: AdjustmentSliderCell, didResetKey key: AdjustmentKey)
 }
 
@@ -71,6 +72,7 @@ class AdjustmentSliderCell: UIView {
         addSubview(valueLabel)
 
         slider.addTarget(self, action: #selector(sliderChanged(_:)), for: .valueChanged)
+        slider.addTarget(self, action: #selector(sliderTouchEnded(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
 
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(sliderDoubleTapped))
         doubleTap.numberOfTapsRequired = 2
@@ -118,6 +120,11 @@ class AdjustmentSliderCell: UIView {
         sender.value = rounded
         valueLabel.text = "\(Int(rounded))"
         delegate?.adjustmentSliderCell(self, didChangeValue: rounded, forKey: adjustmentKey)
+    }
+
+    @objc private func sliderTouchEnded(_ sender: UISlider) {
+        let rounded = roundf(sender.value)
+        delegate?.adjustmentSliderCell(self, didEndChangingValue: rounded, forKey: adjustmentKey)
     }
 
     @objc private func sliderDoubleTapped() {
