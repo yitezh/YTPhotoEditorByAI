@@ -17,6 +17,12 @@ class PhotoEditorViewController: UIViewController {
     private let filterPresetView = FilterPresetView()
     private let cropOverlayView = CropOverlayView()
 
+    /// Pending source image to set after layout is ready
+    private var pendingSourceImage: UIImage?
+
+    /// Retained during export to prevent premature deallocation
+    private var activeExportManager: ExportManager?
+
     /// ViewModel for crop state management
     private lazy var cropViewModel = CropViewModel(imageBounds: .zero)
 
@@ -59,6 +65,15 @@ class PhotoEditorViewController: UIViewController {
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Process any pending source image now that layout is complete
+        if let image = pendingSourceImage {
+            pendingSourceImage = nil
+            applySourceImage(image)
+        }
+    }
 
     // MARK: - Theme
 
@@ -225,6 +240,7 @@ class PhotoEditorViewController: UIViewController {
         guard let source = viewModel.sourceImage else { return }
 
         let exportManager = ExportManager(filterEngine: viewModel.filterEngine)
+        activeExportManager = exportManager
 
         // Show progress HUD
         let progressAlert = UIAlertController(title: "导出中…", message: "\n", preferredStyle: .alert)
@@ -275,6 +291,15 @@ class PhotoEditorViewController: UIViewController {
 
     /// Update the preview with a new source image.
     func setSourceImage(_ image: UIImage) {
+        // If preview view hasn't been laid out yet, defer until viewDidAppear
+        if previewView.bounds.width == 0 || previewView.bounds.height == 0 {
+            pendingSourceImage = image
+            return
+        }
+        applySourceImage(image)
+    }
+
+    private func applySourceImage(_ image: UIImage) {
         guard let ciImage = CIImage(image: image) else { return }
         viewModel.sourceImage = ciImage
         viewModel.previewSize = CGSize(width: previewView.bounds.width * UIScreen.main.scale,
@@ -304,19 +329,41 @@ class PhotoEditorViewController: UIViewController {
 
     /// Enter crop mode: show the crop overlay on top of the preview.
     func enterCropMode() {
-        cropViewModel = CropViewModel(imageBounds: previewView.bounds)
+        // Show the original (uncropped) image as background for the crop overlay
+        if let source = viewModel.sourceImage {
+            var noCropParams = viewModel.currentParameters
+            noCropParams.cropRect = nil
+            noCropParams.rotationCount = 0
+            let uncropped = viewModel.filterEngine.generatePreview(
+                parameters: noCropParams,
+                source: source,
+                targetSize: viewModel.previewSize
+            )
+            previewView.updateImage(uncropped)
+        }
+
+        // Calculate the actual image display rect within the preview view (aspect-fit)
+        let imageDisplayRect = calculateImageDisplayRect(rotationCount: viewModel.currentParameters.rotationCount)
+
+        cropViewModel = CropViewModel(imageBounds: imageDisplayRect)
         cropViewModel.saveState()
 
-        // Restore existing crop/rotation from current parameters
+        // Convert existing image-space crop rect back to view coordinates for display
+        var initialViewCropRect: CGRect? = nil
         if let codableRect = viewModel.currentParameters.cropRect {
-            cropViewModel.cropRect = codableRect.cgRect
+            initialViewCropRect = convertImageRectToViewRect(codableRect.cgRect)
         }
         cropViewModel.rotationCount = viewModel.currentParameters.rotationCount
 
-        cropOverlayView.frame = previewView.frame
+        cropOverlayView.frame = CGRect(
+            x: previewView.frame.origin.x,
+            y: previewView.frame.origin.y,
+            width: previewView.frame.width,
+            height: view.bounds.height - previewView.frame.origin.y
+        )
         cropOverlayView.configure(
-            imageBounds: previewView.bounds,
-            initialCropRect: cropViewModel.cropRect,
+            imageBounds: imageDisplayRect,
+            initialCropRect: initialViewCropRect,
             rotationCount: cropViewModel.rotationCount
         )
         cropOverlayView.isHidden = false
@@ -326,6 +373,81 @@ class PhotoEditorViewController: UIViewController {
         adjustmentPanel.isHidden = true
         filterPresetView.isHidden = true
         navBar.isHidden = true
+    }
+
+    /// Calculate the aspect-fit display rect of the source image within the preview view.
+    /// Takes into account the current rotation count (odd rotations swap width/height).
+    private func calculateImageDisplayRect(rotationCount: Int = 0) -> CGRect {
+        guard let sourceImage = viewModel.sourceImage else { return previewView.bounds }
+
+        let imageExtent = sourceImage.extent
+        let viewSize = previewView.bounds.size
+        guard viewSize.width > 0, viewSize.height > 0,
+              imageExtent.width > 0, imageExtent.height > 0 else {
+            return previewView.bounds
+        }
+
+        // Odd rotation counts swap width and height
+        let imageW: CGFloat
+        let imageH: CGFloat
+        if rotationCount % 2 == 0 {
+            imageW = imageExtent.width
+            imageH = imageExtent.height
+        } else {
+            imageW = imageExtent.height
+            imageH = imageExtent.width
+        }
+
+        let imageAspect = imageW / imageH
+        let viewAspect = viewSize.width / viewSize.height
+
+        if imageAspect > viewAspect {
+            let displayWidth = viewSize.width
+            let displayHeight = viewSize.width / imageAspect
+            let offsetY = (viewSize.height - displayHeight) / 2
+            return CGRect(x: 0, y: offsetY, width: displayWidth, height: displayHeight)
+        } else {
+            let displayHeight = viewSize.height
+            let displayWidth = viewSize.height * imageAspect
+            let offsetX = (viewSize.width - displayWidth) / 2
+            return CGRect(x: offsetX, y: 0, width: displayWidth, height: displayHeight)
+        }
+    }
+
+    /// Convert a rect from CIImage pixel coordinates back to the preview view's coordinate space.
+    private func convertImageRectToViewRect(_ imageRect: CGRect) -> CGRect {
+        guard let sourceImage = viewModel.sourceImage else { return imageRect }
+
+        let imageExtent = sourceImage.extent
+        let viewSize = previewView.bounds.size
+        guard viewSize.width > 0, viewSize.height > 0 else { return imageRect }
+
+        let imageAspect = imageExtent.width / imageExtent.height
+        let viewAspect = viewSize.width / viewSize.height
+
+        var displayRect: CGRect
+        if imageAspect > viewAspect {
+            let displayWidth = viewSize.width
+            let displayHeight = viewSize.width / imageAspect
+            let offsetY = (viewSize.height - displayHeight) / 2
+            displayRect = CGRect(x: 0, y: offsetY, width: displayWidth, height: displayHeight)
+        } else {
+            let displayHeight = viewSize.height
+            let displayWidth = viewSize.height * imageAspect
+            let offsetX = (viewSize.width - displayWidth) / 2
+            displayRect = CGRect(x: offsetX, y: 0, width: displayWidth, height: displayHeight)
+        }
+
+        let scaleX = displayRect.width / imageExtent.width
+        let scaleY = displayRect.height / imageExtent.height
+
+        let viewX = (imageRect.origin.x - imageExtent.origin.x) * scaleX + displayRect.origin.x
+        let viewW = imageRect.width * scaleX
+        let viewH = imageRect.height * scaleY
+        // Flip Y axis back: CIImage bottom-left → UIKit top-left
+        let viewY = displayRect.maxY - (imageRect.origin.y - imageExtent.origin.y + imageRect.height) * scaleY
+
+        return CGRect(x: viewX, y: viewY, width: viewW, height: viewH)
     }
 
     /// Exit crop mode and restore normal editing UI.
@@ -348,7 +470,11 @@ class PhotoEditorViewController: UIViewController {
 
 extension PhotoEditorViewController: ToolTabBarViewDelegate {
     func toolTabBarView(_ tabBar: ToolTabBarView, didSelectTab tab: ToolTab) {
-        if tab == .effects {
+        if tab == .crop {
+            enterCropMode()
+            // Reset tab selection back to previous non-crop tab after entering crop mode
+            toolTabBar.selectTab(.light, animated: false)
+        } else if tab == .effects {
             // Show filter presets, hide adjustment sliders
             adjustmentPanel.isHidden = true
             filterPresetView.isHidden = false
@@ -394,9 +520,54 @@ extension PhotoEditorViewController: FilterPresetViewDelegate {
 
 extension PhotoEditorViewController: CropOverlayViewDelegate {
     func cropOverlayViewDidConfirm(_ view: CropOverlayView, cropRect: CGRect, rotationCount: Int) {
-        viewModel.applyCrop(cropRect, rotation: rotationCount)
+        // Convert crop rect from view coordinates to CIImage pixel coordinates
+        let imageCropRect = convertViewRectToImageRect(cropRect)
+        viewModel.applyCrop(imageCropRect, rotation: rotationCount)
         adjustmentPanel.updateValues(from: viewModel.currentParameters)
         exitCropMode()
+    }
+
+    /// Convert a rect from the preview view's coordinate space to the source CIImage's pixel coordinate space.
+    /// Accounts for aspect-fit scaling and CIImage's bottom-left origin (Y-axis flipped vs UIKit).
+    private func convertViewRectToImageRect(_ viewRect: CGRect) -> CGRect {
+        guard let sourceImage = viewModel.sourceImage else { return viewRect }
+
+        let imageExtent = sourceImage.extent
+        let viewSize = previewView.bounds.size
+        guard viewSize.width > 0, viewSize.height > 0 else { return viewRect }
+
+        // Calculate the aspect-fit display rect of the image within the preview view
+        let imageAspect = imageExtent.width / imageExtent.height
+        let viewAspect = viewSize.width / viewSize.height
+
+        var displayRect: CGRect
+        if imageAspect > viewAspect {
+            // Image is wider — letterboxed top/bottom
+            let displayWidth = viewSize.width
+            let displayHeight = viewSize.width / imageAspect
+            let offsetY = (viewSize.height - displayHeight) / 2
+            displayRect = CGRect(x: 0, y: offsetY, width: displayWidth, height: displayHeight)
+        } else {
+            // Image is taller — pillarboxed left/right
+            let displayHeight = viewSize.height
+            let displayWidth = viewSize.height * imageAspect
+            let offsetX = (viewSize.width - displayWidth) / 2
+            displayRect = CGRect(x: offsetX, y: 0, width: displayWidth, height: displayHeight)
+        }
+
+        // Scale factor from display to image pixels
+        let scaleX = imageExtent.width / displayRect.width
+        let scaleY = imageExtent.height / displayRect.height
+
+        // Convert view rect to image pixel coordinates
+        let imageX = (viewRect.origin.x - displayRect.origin.x) * scaleX + imageExtent.origin.x
+        // Flip Y axis: UIKit origin is top-left, CIImage origin is bottom-left
+        let viewBottomY = viewRect.origin.y + viewRect.height
+        let imageY = (displayRect.maxY - viewBottomY) * scaleY + imageExtent.origin.y
+        let imageW = viewRect.width * scaleX
+        let imageH = viewRect.height * scaleY
+
+        return CGRect(x: imageX, y: imageY, width: imageW, height: imageH)
     }
 
     func cropOverlayViewDidCancel(_ view: CropOverlayView) {
@@ -407,5 +578,25 @@ extension PhotoEditorViewController: CropOverlayViewDelegate {
     func cropOverlayViewDidRotate(_ view: CropOverlayView) {
         cropViewModel.rotate90Clockwise()
         cropOverlayView.rotationCount = cropViewModel.rotationCount
+
+        // Update the background preview to show the rotated (but uncropped) image
+        guard let source = viewModel.sourceImage else { return }
+        var rotatedParams = viewModel.currentParameters
+        rotatedParams.cropRect = nil
+        rotatedParams.rotationCount = cropViewModel.rotationCount
+        let rotatedPreview = viewModel.filterEngine.generatePreview(
+            parameters: rotatedParams,
+            source: source,
+            targetSize: viewModel.previewSize
+        )
+        previewView.updateImage(rotatedPreview)
+
+        // Recalculate image display rect for the rotated image and reset crop frame
+        let imageDisplayRect = calculateImageDisplayRect(rotationCount: cropViewModel.rotationCount)
+        cropOverlayView.configure(
+            imageBounds: imageDisplayRect,
+            initialCropRect: nil,
+            rotationCount: cropViewModel.rotationCount
+        )
     }
 }

@@ -61,15 +61,29 @@ class FilterEngine {
         let scale = min(targetSize.width / source.extent.width,
                         targetSize.height / source.extent.height,
                         1.0) // never upscale
+
+        var previewParams = parameters
+
         let downsampled: CIImage
         if scale < 1.0 {
             let transform = CGAffineTransform(scaleX: scale, y: scale)
             downsampled = source.transformed(by: transform)
+
+            // Scale the crop rect to match the downsampled image coordinates
+            if let crop = parameters.cropRect {
+                let scaledRect = CGRect(
+                    x: crop.x * CGFloat(scale),
+                    y: crop.y * CGFloat(scale),
+                    width: crop.width * CGFloat(scale),
+                    height: crop.height * CGFloat(scale)
+                )
+                previewParams.cropRect = CodableCGRect(scaledRect)
+            }
         } else {
             downsampled = source
         }
 
-        let processed = apply(parameters: parameters, to: downsampled)
+        let processed = apply(parameters: previewParams, to: downsampled)
 
         guard let cgImage = context.createCGImage(processed, from: processed.extent) else {
             return nil

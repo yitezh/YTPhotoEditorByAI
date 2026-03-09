@@ -10,8 +10,9 @@ class EditHistory {
     private var redoStack: [EditParameters] = []
 
     /// Whether there are operations that can be undone.
+    /// The first entry is the initial baseline state and cannot be undone.
     var canUndo: Bool {
-        return !undoStack.isEmpty
+        return undoStack.count > 1
     }
 
     /// Whether there are operations that can be redone.
@@ -38,9 +39,10 @@ class EditHistory {
 
     /// Undo the last edit operation.
     /// Returns the previous EditParameters, or nil if there is nothing to undo.
+    /// Preserves the initial baseline state (first entry) in the undo stack.
     @discardableResult
     func undo() -> EditParameters? {
-        guard let last = undoStack.popLast() else { return nil }
+        guard undoStack.count > 1, let last = undoStack.popLast() else { return nil }
         redoStack.append(last)
         return undoStack.last
     }

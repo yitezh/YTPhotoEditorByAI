@@ -6,6 +6,7 @@ enum ToolTab: String, CaseIterable {
     case color    // 颜色: saturation, vibrance, warmth
     case effects  // 效果: reserved for future extensions
     case detail   // 细节: sharpness
+    case crop     // 裁剪: crop and rotate
 
     /// Display name for the tab
     var displayName: String {
@@ -14,6 +15,7 @@ enum ToolTab: String, CaseIterable {
         case .color:   return "颜色"
         case .effects: return "效果"
         case .detail:  return "细节"
+        case .crop:    return "裁剪"
         }
     }
 
@@ -24,6 +26,7 @@ enum ToolTab: String, CaseIterable {
         case .color:   return "paintpalette"
         case .effects: return "sparkles"
         case .detail:  return "triangle"
+        case .crop:    return "crop"
         }
     }
 

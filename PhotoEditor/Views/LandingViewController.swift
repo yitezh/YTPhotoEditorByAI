@@ -115,13 +115,10 @@ class LandingViewController: UIViewController {
         let viewModel = PhotoEditorViewModel()
         let editorVC = PhotoEditorViewController(viewModel: viewModel)
         editorVC.setFilterPresets(FilterPreset.builtins)
+        // Set source image before push; editor will defer rendering until layout is ready
+        editorVC.setSourceImage(uiImage)
 
         navigationController?.pushViewController(editorVC, animated: true)
-
-        // Set source image after push so the preview view has valid bounds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            editorVC.setSourceImage(uiImage)
-        }
     }
 
     // MARK: - Error Handling

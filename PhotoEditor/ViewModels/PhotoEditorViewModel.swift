@@ -47,6 +47,8 @@ class PhotoEditorViewModel {
          editHistory: EditHistory = EditHistory()) {
         self.filterEngine = filterEngine
         self.editHistory = editHistory
+        // Push initial default state so undo can always restore to baseline
+        editHistory.push(currentParameters)
     }
 
     // MARK: - Parameter Updates
